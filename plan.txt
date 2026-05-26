@@ -1,0 +1,45 @@
+The architecture note that drives everything: your LLM key is a real secret and lives server-side in Vercel env vars; the Eventbrite key is user-supplied, lives only in their browser session, and gets passed to your API route per-request (used transiently, never stored). Keep that split clear and the rest falls into place.
+Phase 0 — Scaffold and deploy pipeline
+
+Create a Next.js app with the App Router, initialize a git repo, and push to GitHub.
+Import the repo into Vercel so every push auto-deploys. Get the URL working with a placeholder page first — confirm the pipeline before building features.
+Get your LLM API key and add it as a Vercel environment variable. Pick your model now (a fast, cheap one is fine for extraction).
+
+Phase 1 — Eventbrite key entry
+
+Build a simple settings panel/field where the user pastes their Eventbrite token.
+Save it to sessionStorage and gate the rest of the app on its presence (no key → show the entry screen).
+Add a lightweight "test connection" — a call to Eventbrite's /users/me endpoint — so the user gets immediate feedback that their key works before they invest effort.
+
+Phase 2 — Document upload
+
+Add an upload component. For a quick demo, accept plain text (.txt/.md) or even just a paste-into-textarea box — that avoids .docx parsing entirely. Add .docx support later if needed.
+Read the file contents (client-side is fine for text) so you have a raw string to send for extraction.
+
+Phase 3 — LLM extraction API route
+
+Create an /api/extract route that takes the raw text and returns structured JSON.
+Prompt it to pull: event name, description, start datetime, end datetime, timezone, currency, online-vs-venue, venue details, and ticket info (free/paid + price). Instruct it to return clean ISO datetimes and to mark anything it couldn't find as null rather than guessing.
+Apply sensible defaults server-side for fields a messy doc often omits (e.g. timezone → America/Edmonton, currency → CAD).
+
+Phase 4 — Review and edit step
+
+Don't go straight from extraction to creation. Show the extracted fields in an editable form so the user can fix the LLM's mistakes and fill in blanks.
+Visually flag any field that came back null. This single step is what makes a "messy document" demo actually reliable.
+
+Phase 5 — Eventbrite creation API route
+
+Create an /api/create-event route that receives the confirmed fields plus the Eventbrite token (sent from sessionStorage in the request body/header).
+Run the sequence: look up the org ID → create the draft event → create at least one ticket class → publish. Return the resulting public event URL.
+Because the token arrives per-request and isn't persisted, this stays consistent with your session-only key decision.
+
+Phase 6 — Result and error handling
+
+On success, show a confirmation with a clickable link to the live Eventbrite event.
+Surface failures clearly — Eventbrite's publish step returns specific "missing required field" errors, so pass those back to the user instead of a generic failure. Add loading states for the extract and create steps since both involve network round-trips.
+
+Phase 7 — End-to-end test and share
+
+Run a real messy document through the full flow on the deployed Vercel URL, not just locally.
+Once it works, the URL is the deliverable — hand it to your tester.
+
