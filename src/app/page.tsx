@@ -26,10 +26,11 @@ export default function Home() {
   });
   const [userProfile, setUserProfile] = useState<any>(null);
   
-  // Phase 2 & 3 & 4 States
+  // Phase 2 & 3 & 4 & 5 States
   const [documentText, setDocumentText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [currentStep, setCurrentStep] = useState<'upload' | 'extracting' | 'review' | 'success'>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'extracting' | 'review' | 'creating' | 'success'>('upload');
+  const [liveEventUrl, setLiveEventUrl] = useState('');
   const [formData, setFormData] = useState<ExtractedEventData>({
     name: '',
     description: '',
@@ -104,14 +105,15 @@ export default function Home() {
         const ext = data.data;
         
         // Convert extracted ISO UTC datetimes to local format required by <input type="datetime-local" />
-        // HTML input format: YYYY-MM-DDTHH:MM
         const formatDateTimeLocal = (isoString: string | null) => {
           if (!isoString) return '';
           try {
             const date = new Date(isoString);
             if (isNaN(date.getTime())) return '';
-            // offset timezone to match local, or just get ISO string without offset for simple mock
-            return date.toISOString().slice(0, 16);
+            // Offset back to local string format
+            const tzoffset = date.getTimezoneOffset() * 60000; 
+            const localISOTime = (new Date(date.getTime() - tzoffset)).toISOString().slice(0, 16);
+            return localISOTime;
           } catch {
             return '';
           }
@@ -143,7 +145,61 @@ export default function Home() {
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert("Phase 5 - Event creation will be implemented next! Form data is validated and ready.");
+    setCurrentStep('creating');
+    setStatus({ type: null, message: '' });
+
+    const storedToken = sessionStorage.getItem('eventbrite_token');
+    if (!storedToken) {
+      setStatus({ type: 'error', message: 'Eventbrite token missing from session. Please reconnect.' });
+      setIsAuthenticated(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/create-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${storedToken}`
+        },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setLiveEventUrl(data.event_url);
+        setCurrentStep('success');
+      } else {
+        // Specific error handling for Eventbrite creation failure
+        const errorMsg = data.details || data.error || 'Failed to create event on Eventbrite.';
+        setStatus({ type: 'error', message: errorMsg });
+        setCurrentStep('review');
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: 'A network error occurred during event publishing.' });
+      setCurrentStep('review');
+    }
+  };
+
+  const handleReset = () => {
+    setCurrentStep('upload');
+    setDocumentText('');
+    setLiveEventUrl('');
+    setStatus({ type: null, message: '' });
+    setFormData({
+      name: '',
+      description: '',
+      start_utc: '',
+      start_timezone: 'America/Edmonton',
+      end_utc: '',
+      end_timezone: 'America/Edmonton',
+      currency: 'CAD',
+      is_online: false,
+      venue_details: '',
+      ticket_type: 'free',
+      ticket_price: 0
+    });
   };
 
   useEffect(() => {
@@ -297,6 +353,14 @@ export default function Home() {
           </div>
         )}
 
+        {currentStep === 'creating' && (
+          <div className="glass-panel" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
+            <span className="loader" style={{ width: '40px', height: '40px', borderWidth: '4px', display: 'inline-block', marginBottom: '1.5rem' }}></span>
+            <h2>Publishing Event to Eventbrite...</h2>
+            <p className="subtitle" style={{ marginTop: '0.5rem' }}>Creating draft, generating ticket tier, and making it live.</p>
+          </div>
+        )}
+
         {currentStep === 'review' && (
           <div className="glass-panel">
             <div className="flex-between" style={{ borderBottom: '1px solid var(--glass-border)', paddingBottom: '1.5rem', marginBottom: '2rem' }}>
@@ -305,10 +369,10 @@ export default function Home() {
                 <p className="subtitle" style={{ marginBottom: 0 }}>We highlighted missing fields in yellow. Please fill them in or adjust before publishing.</p>
               </div>
               <div style={{ display: 'flex', gap: '1rem' }}>
-                <button className="btn btn-outline" onClick={() => setCurrentStep('upload')}>
+                <button className="btn btn-outline" type="button" onClick={() => setCurrentStep('upload')}>
                   ← Back to Upload
                 </button>
-                <button className="btn btn-primary" onClick={handleCreateEvent}>
+                <button className="btn btn-primary" type="button" onClick={handleCreateEvent}>
                   Publish to Eventbrite ✓
                 </button>
               </div>
@@ -472,6 +536,31 @@ export default function Home() {
                 )}
               </div>
             </form>
+          </div>
+        )}
+
+        {currentStep === 'success' && (
+          <div className="glass-panel" style={{ textAlign: 'center', padding: '3.5rem 2rem' }}>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem', animation: 'spin 0.5s ease' }}>🎉</div>
+            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Event Live on Eventbrite!</h2>
+            <p className="subtitle" style={{ marginBottom: '2.5rem' }}>We successfully parsed, processed, and published your event.</p>
+
+            <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)', padding: '2rem', borderRadius: '12px', marginBottom: '2.5rem' }}>
+              <h3 style={{ marginBottom: '1rem', color: '#c084fc' }}>{formData.name}</h3>
+              <a 
+                href={liveEventUrl} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="btn btn-primary"
+                style={{ textDecoration: 'none' }}
+              >
+                View Live Page ↗
+              </a>
+            </div>
+
+            <button className="btn btn-outline" onClick={handleReset}>
+              Create Another Event
+            </button>
           </div>
         )}
       </main>
