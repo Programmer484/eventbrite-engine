@@ -2,6 +2,20 @@
 
 import { useState, useEffect } from 'react';
 
+interface ExtractedEventData {
+  name: string | null;
+  description: string | null;
+  start_utc: string | null;
+  start_timezone: string;
+  end_utc: string | null;
+  end_timezone: string;
+  currency: string;
+  is_online: boolean;
+  venue_details: string | null;
+  ticket_type: string | null;
+  ticket_price: number | null;
+}
+
 export default function Home() {
   const [token, setToken] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -11,8 +25,24 @@ export default function Home() {
     message: ''
   });
   const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // Phase 2 & 3 & 4 States
   const [documentText, setDocumentText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [currentStep, setCurrentStep] = useState<'upload' | 'extracting' | 'review' | 'success'>('upload');
+  const [formData, setFormData] = useState<ExtractedEventData>({
+    name: '',
+    description: '',
+    start_utc: '',
+    start_timezone: 'America/Edmonton',
+    end_utc: '',
+    end_timezone: 'America/Edmonton',
+    currency: 'CAD',
+    is_online: false,
+    venue_details: '',
+    ticket_type: 'free',
+    ticket_price: 0
+  });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -50,17 +80,73 @@ export default function Home() {
     }
   };
 
-  const handleProceed = () => {
+  const handleExtract = async () => {
     if (!documentText.trim()) {
       alert("Please provide some document text first.");
       return;
     }
-    // For now just console log, phase 3 will use this
-    alert("Phase 2 complete! Document text is ready for Phase 3 extraction. Length: " + documentText.length);
+
+    setCurrentStep('extracting');
+    setStatus({ type: null, message: '' });
+
+    try {
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: documentText }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const ext = data.data;
+        
+        // Convert extracted ISO UTC datetimes to local format required by <input type="datetime-local" />
+        // HTML input format: YYYY-MM-DDTHH:MM
+        const formatDateTimeLocal = (isoString: string | null) => {
+          if (!isoString) return '';
+          try {
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) return '';
+            // offset timezone to match local, or just get ISO string without offset for simple mock
+            return date.toISOString().slice(0, 16);
+          } catch {
+            return '';
+          }
+        };
+
+        setFormData({
+          name: ext.name || '',
+          description: ext.description || '',
+          start_utc: formatDateTimeLocal(ext.start_utc),
+          start_timezone: ext.start_timezone || 'America/Edmonton',
+          end_utc: formatDateTimeLocal(ext.end_utc),
+          end_timezone: ext.end_timezone || 'America/Edmonton',
+          currency: ext.currency || 'CAD',
+          is_online: ext.is_online ?? false,
+          venue_details: ext.venue_details || '',
+          ticket_type: ext.ticket_type || 'free',
+          ticket_price: ext.ticket_price || 0
+        });
+        setCurrentStep('review');
+      } else {
+        setStatus({ type: 'error', message: data.error || 'Failed to extract data using Claude.' });
+        setCurrentStep('upload');
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: 'A network error occurred during extraction.' });
+      setCurrentStep('upload');
+    }
+  };
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    alert("Phase 5 - Event creation will be implemented next! Form data is validated and ready.");
   };
 
   useEffect(() => {
-    // Check session storage on load
     const storedToken = sessionStorage.getItem('eventbrite_token');
     if (storedToken) {
       setToken(storedToken);
@@ -70,7 +156,6 @@ export default function Home() {
 
   const handleTestConnection = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!token.trim()) {
       setStatus({ type: 'error', message: 'Please enter a valid token.' });
       return;
@@ -98,9 +183,9 @@ export default function Home() {
         sessionStorage.setItem('eventbrite_token', token.trim());
         setUserProfile(data.user);
         
-        // Short delay to let user see success message before transitioning
         setTimeout(() => {
           setIsAuthenticated(true);
+          setStatus({ type: null, message: '' });
         }, 1500);
       } else {
         setStatus({ 
@@ -119,6 +204,8 @@ export default function Home() {
     sessionStorage.removeItem('eventbrite_token');
     setIsAuthenticated(false);
     setToken('');
+    setCurrentStep('upload');
+    setDocumentText('');
     setStatus({ type: null, message: '' });
     setUserProfile(null);
   };
@@ -134,64 +221,259 @@ export default function Home() {
             Clear Token
           </button>
         </div>
-        
-        <div className="glass-panel">
-          <div className="flex-between">
-            <div>
-              <h2 style={{ marginBottom: '0.5rem' }}>Upload Event Details</h2>
-              <p className="subtitle" style={{ marginBottom: 0 }}>Provide a raw document or paste text to extract Eventbrite fields.</p>
-            </div>
-            <button 
-              className="btn btn-primary" 
-              onClick={handleProceed}
-              disabled={!documentText.trim()}
-            >
-              Extract Fields →
-            </button>
-          </div>
-          
-          <div style={{ marginTop: '2rem' }}>
-            <label 
-              htmlFor="file-upload"
-              className={`upload-zone ${isDragging ? 'drag-active' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              style={{ display: 'block' }}
-            >
-              <div className="upload-icon">📄</div>
-              <h3 style={{ marginBottom: '0.5rem' }}>Drag & Drop Document</h3>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-                Supports .txt and .md files (Word .docx support coming soon)
-              </p>
-              
-              <input 
-                type="file" 
-                id="file-upload" 
-                style={{ display: 'none' }} 
-                accept=".txt,.md"
-                onChange={handleFileUpload}
-              />
-              <span className="btn btn-outline" style={{ display: 'inline-block' }}>
-                Browse Files
-              </span>
-            </label>
 
-            <div className="input-group">
-              <label htmlFor="raw-text" className="input-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Or Paste Raw Text</span>
-                <span style={{ fontWeight: 'normal', textTransform: 'none' }}>{documentText.length} characters</span>
+        {status.type === 'error' && (
+          <div className="status-message status-error" style={{ marginBottom: '1.5rem' }}>
+            <strong>⚠</strong>
+            <span>{status.message}</span>
+          </div>
+        )}
+
+        {currentStep === 'upload' && (
+          <div className="glass-panel">
+            <div className="flex-between">
+              <div>
+                <h2 style={{ marginBottom: '0.5rem' }}>Upload Event Details</h2>
+                <p className="subtitle" style={{ marginBottom: 0 }}>Provide a raw document or paste text to extract Eventbrite fields.</p>
+              </div>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleExtract}
+                disabled={!documentText.trim()}
+              >
+                Extract Fields →
+              </button>
+            </div>
+            
+            <div style={{ marginTop: '2rem' }}>
+              <label 
+                htmlFor="file-upload"
+                className={`upload-zone ${isDragging ? 'drag-active' : ''}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{ display: 'block' }}
+              >
+                <div className="upload-icon">📄</div>
+                <h3 style={{ marginBottom: '0.5rem' }}>Drag & Drop Document</h3>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+                  Supports .txt and .md files (Word .docx support coming soon)
+                </p>
+                
+                <input 
+                  type="file" 
+                  id="file-upload" 
+                  style={{ display: 'none' }} 
+                  accept=".txt,.md"
+                  onChange={handleFileUpload}
+                />
+                <span className="btn btn-outline" style={{ display: 'inline-block' }}>
+                  Browse Files
+                </span>
               </label>
-              <textarea
-                id="raw-text"
-                className="textarea-field"
-                placeholder="Paste the raw event details, notes, or email thread here..."
-                value={documentText}
-                onChange={(e) => setDocumentText(e.target.value)}
-              />
+
+              <div className="input-group">
+                <label htmlFor="raw-text" className="input-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Or Paste Raw Text</span>
+                  <span style={{ fontWeight: 'normal', textTransform: 'none' }}>{documentText.length} characters</span>
+                </label>
+                <textarea
+                  id="raw-text"
+                  className="textarea-field"
+                  placeholder="Paste the raw event details, notes, or email thread here..."
+                  value={documentText}
+                  onChange={(e) => setDocumentText(e.target.value)}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {currentStep === 'extracting' && (
+          <div className="glass-panel" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
+            <span className="loader" style={{ width: '40px', height: '40px', borderWidth: '4px', display: 'inline-block', marginBottom: '1.5rem' }}></span>
+            <h2>Extracting Details using Claude AI...</h2>
+            <p className="subtitle" style={{ marginTop: '0.5rem' }}>Structuring event data, fixing dates, and setting defaults.</p>
+          </div>
+        )}
+
+        {currentStep === 'review' && (
+          <div className="glass-panel">
+            <div className="flex-between" style={{ borderBottom: '1px solid var(--glass-border)', paddingBottom: '1.5rem', marginBottom: '2rem' }}>
+              <div>
+                <h2>Review Extracted Details</h2>
+                <p className="subtitle" style={{ marginBottom: 0 }}>We highlighted missing fields in yellow. Please fill them in or adjust before publishing.</p>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button className="btn btn-outline" onClick={() => setCurrentStep('upload')}>
+                  ← Back to Upload
+                </button>
+                <button className="btn btn-primary" onClick={handleCreateEvent}>
+                  Publish to Eventbrite ✓
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateEvent}>
+              <div className="form-group">
+                <label className="input-label">
+                  Event Title {!formData.name && <span className="warning-badge">Missing</span>}
+                </label>
+                <input
+                  type="text"
+                  className={`input-field ${!formData.name ? 'field-warning' : ''}`}
+                  value={formData.name || ''}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. Artificial Intelligence Workshop 2026"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="input-label">Description</label>
+                <textarea
+                  className="textarea-field"
+                  style={{ minHeight: '120px' }}
+                  value={formData.description || ''}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Give a brief or detailed overview of the event..."
+                />
+              </div>
+
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="input-label">
+                    Start Date & Time {!formData.start_utc && <span className="warning-badge">Missing</span>}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className={`input-field ${!formData.start_utc ? 'field-warning' : ''}`}
+                    value={formData.start_utc || ''}
+                    onChange={(e) => setFormData({ ...formData, start_utc: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="input-label">Start Timezone</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={formData.start_timezone}
+                    onChange={(e) => setFormData({ ...formData, start_timezone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="input-label">
+                    End Date & Time {!formData.end_utc && <span className="warning-badge">Missing</span>}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className={`input-field ${!formData.end_utc ? 'field-warning' : ''}`}
+                    value={formData.end_utc || ''}
+                    onChange={(e) => setFormData({ ...formData, end_utc: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="input-label">End Timezone</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={formData.end_timezone}
+                    onChange={(e) => setFormData({ ...formData, end_timezone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="input-label">Location Type</label>
+                  <div className="toggle-group">
+                    <button
+                      type="button"
+                      className={`toggle-btn ${!formData.is_online ? 'active' : ''}`}
+                      onClick={() => setFormData({ ...formData, is_online: false })}
+                    >
+                      Venue (Physical)
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-btn ${formData.is_online ? 'active' : ''}`}
+                      onClick={() => setFormData({ ...formData, is_online: true })}
+                    >
+                      Online Event
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="input-label">Currency</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {!formData.is_online && (
+                <div className="form-group">
+                  <label className="input-label">
+                    Venue Details {!formData.venue_details && <span className="warning-badge">Missing</span>}
+                  </label>
+                  <input
+                    type="text"
+                    className={`input-field ${!formData.venue_details ? 'field-warning' : ''}`}
+                    value={formData.venue_details || ''}
+                    onChange={(e) => setFormData({ ...formData, venue_details: e.target.value })}
+                    placeholder="e.g. Edmonton Convention Centre, 9797 Jasper Ave, Edmonton, AB"
+                  />
+                </div>
+              )}
+
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="input-label">Ticket Type</label>
+                  <div className="toggle-group">
+                    <button
+                      type="button"
+                      className={`toggle-btn ${formData.ticket_type === 'free' ? 'active' : ''}`}
+                      onClick={() => setFormData({ ...formData, ticket_type: 'free', ticket_price: 0 })}
+                    >
+                      Free Ticket
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-btn ${formData.ticket_type === 'paid' ? 'active' : ''}`}
+                      onClick={() => setFormData({ ...formData, ticket_type: 'paid' })}
+                    >
+                      Paid Ticket
+                    </button>
+                  </div>
+                </div>
+
+                {formData.ticket_type === 'paid' && (
+                  <div className="form-group">
+                    <label className="input-label">Ticket Price ({formData.currency})</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input-field"
+                      value={formData.ticket_price || ''}
+                      onChange={(e) => setFormData({ ...formData, ticket_price: parseFloat(e.target.value) || 0 })}
+                      placeholder="e.g. 29.99"
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+            </form>
+          </div>
+        )}
       </main>
     );
   }
