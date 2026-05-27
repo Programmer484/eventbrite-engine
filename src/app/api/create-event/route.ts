@@ -155,27 +155,9 @@ export async function POST(request: Request) {
       }, { status: ticketRes.status });
     }
 
-    // 5. Publish Event
-    const publishRes = await fetch(`https://www.eventbriteapi.com/v3/events/${eventId}/publish/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-
-    if (!publishRes.ok) {
-      const err = await publishRes.json().catch(() => ({}));
-      return NextResponse.json({
-        error: 'Event created but failed to publish. Check your Eventbrite dashboard to publish manually.',
-        details: err.error_description || err.error || err,
-        event_url: eventData.url,
-        partially_completed: true
-      }, { status: 400 });
-    }
-
     return NextResponse.json({
       success: true,
-      event_url: eventData.url,
+      event_url: `https://www.eventbrite.com/manage/events/${eventId}/details`,
       event_id: eventId
     });
 

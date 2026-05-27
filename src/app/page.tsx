@@ -356,8 +356,8 @@ export default function Home() {
         {currentStep === 'creating' && (
           <div className="glass-panel" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
             <span className="loader" style={{ width: '40px', height: '40px', borderWidth: '4px', display: 'inline-block', marginBottom: '1.5rem' }}></span>
-            <h2>Publishing Event to Eventbrite...</h2>
-            <p className="subtitle" style={{ marginTop: '0.5rem' }}>Creating draft, generating ticket tier, and making it live.</p>
+            <h2>Creating Draft on Eventbrite...</h2>
+            <p className="subtitle" style={{ marginTop: '0.5rem' }}>Setting up draft, generating ticket tier, and preparing dashboard link.</p>
           </div>
         )}
 
@@ -373,7 +373,7 @@ export default function Home() {
                   ← Back to Upload
                 </button>
                 <button className="btn btn-primary" type="button" onClick={handleCreateEvent}>
-                  Publish to Eventbrite ✓
+                  Create Draft Event ✓
                 </button>
               </div>
             </div>
@@ -542,8 +542,8 @@ export default function Home() {
         {currentStep === 'success' && (
           <div className="glass-panel" style={{ textAlign: 'center', padding: '3.5rem 2rem' }}>
             <div style={{ fontSize: '4rem', marginBottom: '1rem', animation: 'spin 0.5s ease' }}>🎉</div>
-            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Event Live on Eventbrite!</h2>
-            <p className="subtitle" style={{ marginBottom: '2.5rem' }}>We successfully parsed, processed, and published your event.</p>
+            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Draft Event Created!</h2>
+            <p className="subtitle" style={{ marginBottom: '2.5rem' }}>We successfully parsed and saved your event as a draft on Eventbrite.</p>
 
             <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)', padding: '2rem', borderRadius: '12px', marginBottom: '2.5rem' }}>
               <h3 style={{ marginBottom: '1rem', color: '#c084fc' }}>{formData.name}</h3>
@@ -554,7 +554,7 @@ export default function Home() {
                 className="btn btn-primary"
                 style={{ textDecoration: 'none' }}
               >
-                View Live Page ↗
+                Open Draft in Dashboard ↗
               </a>
             </div>
 
